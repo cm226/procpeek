@@ -2,39 +2,35 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"os"
-	"os/exec"
+	"procpeek/controllers"
+	"procpeek/tools"
+	"procpeek/views"
+
+	"github.com/rivo/tview"
 )
 
 func main() {
-	//box := tview.NewBox().SetBorder(true).SetTitle("Hello, world!")
-	//if err := tview.NewApplication().SetRoot(box, true).Run(); err != nil {
-	//panic(err)
-	//}
+
 	pid := flag.Int("p", 42, "The process ID (pid) of the process to peek")
 	flag.Parse()
 
-	cmd := exec.Command("strace", "-p", fmt.Sprint(*pid))
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Start()
+	straceOut, cmd := tools.Strace(*pid)
 
-	//_, _, cmd := tools.Strace(*pid)
+	app := tview.NewApplication()
 
-	//buf := bufio.NewReader(stream)
-	//errBuf := bufio.NewReader(stderr)
+	sysCalls := views.SystemCalls(app)
+	controllers.CopyStream(straceOut, sysCalls)
 
-	//for {
-	//line, error := buf.ReadString('\n')
-	//if error != nil {
-	//fmt.Println("error " + error.Error())
-	//}
+	flex := tview.NewFlex().
+		AddItem(tview.NewBox().SetBorder(true).SetTitle("Left (1/2 x width of Top)"), 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(sysCalls, 0, 1, false), 0, 2, false)
 
-	//errLine, error := errBuf.ReadString('\n')
-	//fmt.Println(errLine)
-	//fmt.Println(line)
-	//}
-	cmd.Wait()
+	if err := app.SetRoot(flex, true).Run(); err != nil {
+		panic(err)
+	}
 
+	if err := cmd.Wait(); err != nil {
+		panic(err)
+	}
 }

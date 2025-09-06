@@ -12,7 +12,7 @@
             "mode": "auto",
             "program": "${workspaceFolder}/procpeek.go",
             "args": ["-p","60735"],
-            "console": "integratedTerminal",
+            "console": "externalTerminal",
             "asRoot": true,
         }
     ]
