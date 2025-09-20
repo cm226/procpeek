@@ -8,8 +8,45 @@ import (
 	"procpeek/views"
 	"time"
 
+	"os/exec"
+
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+func buildSysCallsView(app *tview.Application, pid *int) (*tview.TextView, *exec.Cmd) {
+
+	straceOut, cmd := tools.Strace(*pid)
+	sysCalls := views.SystemCalls(app)
+	viewAdaptors.CopyStream(straceOut, sysCalls)
+	return sysCalls, cmd
+}
+
+func buildFDPages(app *tview.Application, pid *int, viewUpdater *updater.ViewUpdater) *tview.Pages {
+
+	LsofOut := func() []map[rune]string { return tools.Lsof(*pid) }
+	var lsofCache = updater.MakeToolCache(LsofOut)
+	viewUpdater.AddCache(&lsofCache)
+
+	filesTable := views.Table(app, "Files")
+	viewUpdater.AddView(func() { viewAdaptors.FileAdaptorAdaptor(lsofCache, filesTable) })
+
+	pages := tview.NewPages()
+	pages.AddPage("Files",
+		filesTable,
+		true,
+		true)
+
+	pages.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'f' {
+			pages.SwitchToPage("Files")
+		} else if event.Rune() == 's' {
+			pages.SwitchToPage("Sockets")
+		}
+		return event
+	})
+	return pages
+}
 
 func main() {
 
@@ -18,16 +55,10 @@ func main() {
 
 	var updater = updater.CreateNew(time.Millisecond * 1000)
 
-	straceOut, cmd := tools.Strace(*pid)
-
 	app := tview.NewApplication()
 
-	sysCalls := views.SystemCalls(app)
-	viewAdaptors.CopyStream(straceOut, sysCalls)
-
-	fdsTable := views.Table(app, "Open files")
-	fds := tools.Fd(*pid)
-	updater.AddView(func() { viewAdaptors.FdsAdaptor(fds(), fdsTable) })
+	sysCalls, cmd := buildSysCallsView(app, pid)
+	fdsTable := buildFDPages(app, pid, updater)
 
 	updater.Run()
 	flex := tview.NewFlex().
@@ -42,4 +73,5 @@ func main() {
 	if err := cmd.Cancel(); err != nil {
 		panic(err)
 	}
+
 }

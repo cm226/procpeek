@@ -11,9 +11,9 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}/procpeek.go",
-            "args": ["-p","60735"],
+            "args": ["-p","23710"],
             "console": "externalTerminal",
-            "asRoot": true,
-        }
+            "asRoot": true
+        }        
     ]
 }
