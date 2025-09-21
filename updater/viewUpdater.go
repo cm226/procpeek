@@ -1,6 +1,10 @@
 package updater
 
-import "time"
+import (
+	"time"
+
+	"github.com/rivo/tview"
+)
 
 type ViewUpdater struct {
 	TickRate time.Duration
@@ -42,7 +46,7 @@ func update(vu *ViewUpdater) {
 	updateViews(vu)
 }
 
-func (vu *ViewUpdater) Run() {
+func (vu *ViewUpdater) Run(app *tview.Application) {
 	go func() {
 		update(vu)
 		ticker := time.NewTicker(vu.TickRate)
@@ -51,6 +55,7 @@ func (vu *ViewUpdater) Run() {
 			select {
 			case <-ticker.C:
 				update(vu)
+				app.Draw()
 			}
 		}
 	}()

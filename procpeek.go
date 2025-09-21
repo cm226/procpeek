@@ -60,7 +60,7 @@ func main() {
 	sysCalls, cmd := buildSysCallsView(app, pid)
 	fdsTable := buildFDPages(app, pid, updater)
 
-	updater.Run()
+	updater.Run(app)
 	flex := tview.NewFlex().
 		AddItem(fdsTable, 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
