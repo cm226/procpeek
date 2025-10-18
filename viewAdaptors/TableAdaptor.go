@@ -8,15 +8,21 @@ import (
 func TableAdaptor(data [][]string, view *tview.Table) {
 
 	view.Clear()
-	color := tcell.ColorYellow
+	keyColor := tcell.ColorBlue
+	rowColor := tcell.ColorNone
 
 	for i, row := range data {
 		for j, col := range row {
+			color := rowColor
+			if j == 0 {
+				color = keyColor
+			}
 			view.SetCell(i, j,
 				tview.NewTableCell(col).
 					SetTextColor(color).
-					SetAlign(tview.AlignCenter))
+					SetAlign(tview.AlignLeft))
 		}
 	}
 	view.SetSelectable(true, false)
+	view.SetSelectedStyle(tcell.StyleDefault.Background(keyColor))
 }

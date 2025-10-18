@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"procpeek/menu"
 	"procpeek/tools"
 	"procpeek/updater"
 	"procpeek/viewAdaptors"
@@ -18,15 +19,29 @@ const FILES_PAGE = "Files"
 const SOCKETS_PAGE = "Sockets"
 const SYSCALL_PAGE = "SysCalls"
 
-func buildSysCallsView(app *tview.Application, pid *int) (*tview.TextView, *exec.Cmd) {
+type Page struct {
+	name     string
+	ui       tview.Primitive
+	shortcut rune
+}
+
+type App struct {
+	app     *tview.Application
+	updater *updater.ViewUpdater
+	pages   []*Page
+}
+
+func buildSysCallsView(app *tview.Application, pid *int) (*Page, *exec.Cmd) {
 
 	straceOut, cmd := tools.Strace(*pid)
 	sysCalls := views.SystemCalls(app)
 	viewAdaptors.CopyStream(straceOut, sysCalls)
-	return sysCalls, cmd
+
+	page := Page{name: "SysCalls", ui: sysCalls, shortcut: 'y'}
+	return &page, cmd
 }
 
-func buildFDPages(app *tview.Application, pid *int, viewUpdater *updater.ViewUpdater) (*tview.Table, *tview.Table) {
+func buildFDPages(app *tview.Application, pid *int, viewUpdater *updater.ViewUpdater) []*Page {
 
 	LsofOut := func() []map[rune]string { return tools.Lsof(*pid) }
 	var lsofCache = updater.MakeToolCache(LsofOut)
@@ -37,7 +52,41 @@ func buildFDPages(app *tview.Application, pid *int, viewUpdater *updater.ViewUpd
 	socketTable := views.Table(app, "Sockets")
 	viewUpdater.AddView(func() { viewAdaptors.SocketAdaptorAdaptor(lsofCache, socketTable) })
 
-	return filesTable, socketTable
+	filesPage := Page{name: "Files", ui: filesTable, shortcut: 'f'}
+	socketPage := Page{name: "Socket", ui: socketTable, shortcut: 's'}
+	return []*Page{&filesPage, &socketPage}
+}
+
+func initApp(app *App) {
+	pages := tview.NewPages()
+	menuItems := [][]string{}
+
+	for _, page := range app.pages {
+		menuItems = append(menuItems, []string{string(page.shortcut), page.name})
+		pages.AddPage(page.name,
+			page.ui,
+			true,
+			true)
+	}
+
+	app.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		for _, page := range app.pages {
+			if event.Rune() == page.shortcut {
+				pages.SwitchToPage(page.name)
+			}
+		}
+		return event
+	})
+
+	menuView := menu.NewMenu(menuItems)
+
+	flex := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(pages, 0, 1, true).
+		AddItem(menuView, 1, 1, false)
+
+	app.app.SetRoot(flex, true).SetFocus(pages)
+
 }
 
 func main() {
@@ -45,45 +94,21 @@ func main() {
 	pid := flag.Int("p", 42, "The process ID (pid) of the process to peek")
 	flag.Parse()
 
-	var updater = updater.CreateNew(time.Millisecond * 1000)
+	app := App{
+		updater: updater.CreateNew(time.Millisecond * 1000),
+		app:     tview.NewApplication(),
+		pages:   []*Page{},
+	}
 
-	app := tview.NewApplication()
+	sysCalls, _ := buildSysCallsView(app.app, pid)
 
-	sysCalls, _ := buildSysCallsView(app, pid)
-	files, sockets := buildFDPages(app, pid, updater)
+	app.pages = append(app.pages, sysCalls)
+	app.pages = append(app.pages, buildFDPages(app.app, pid, app.updater)...)
 
-	pages := tview.NewPages()
-	pages.AddPage(FILES_PAGE,
-		files,
-		true,
-		true)
+	initApp(&app)
 
-	pages.AddPage(SOCKETS_PAGE,
-		sockets,
-		true,
-		true)
-
-	pages.AddPage(SYSCALL_PAGE,
-		sysCalls,
-		true,
-		true)
-
-	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Rune() == 'f' {
-			pages.SwitchToPage(FILES_PAGE)
-		} else if event.Rune() == 's' {
-			pages.SwitchToPage(SOCKETS_PAGE)
-		} else if event.Rune() == 'y' {
-			pages.SwitchToPage(SYSCALL_PAGE)
-		} else if event.Rune() == 'q' {
-			app.Stop()
-		}
-		return event
-	})
-
-	updater.Run(app)
-
-	if err := app.SetRoot(pages, true).SetFocus(pages).Run(); err != nil {
+	app.updater.Run(app.app)
+	if err := app.app.Run(); err != nil {
 		panic(err)
 	}
 }
