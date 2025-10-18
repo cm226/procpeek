@@ -14,6 +14,10 @@ import (
 	"github.com/rivo/tview"
 )
 
+const FILES_PAGE = "Files"
+const SOCKETS_PAGE = "Sockets"
+const SYSCALL_PAGE = "SysCalls"
+
 func buildSysCallsView(app *tview.Application, pid *int) (*tview.TextView, *exec.Cmd) {
 
 	straceOut, cmd := tools.Strace(*pid)
@@ -22,7 +26,7 @@ func buildSysCallsView(app *tview.Application, pid *int) (*tview.TextView, *exec
 	return sysCalls, cmd
 }
 
-func buildFDPages(app *tview.Application, pid *int, viewUpdater *updater.ViewUpdater) *tview.Pages {
+func buildFDPages(app *tview.Application, pid *int, viewUpdater *updater.ViewUpdater) (*tview.Table, *tview.Table) {
 
 	LsofOut := func() []map[rune]string { return tools.Lsof(*pid) }
 	var lsofCache = updater.MakeToolCache(LsofOut)
@@ -30,22 +34,10 @@ func buildFDPages(app *tview.Application, pid *int, viewUpdater *updater.ViewUpd
 
 	filesTable := views.Table(app, "Files")
 	viewUpdater.AddView(func() { viewAdaptors.FileAdaptorAdaptor(lsofCache, filesTable) })
+	socketTable := views.Table(app, "Sockets")
+	viewUpdater.AddView(func() { viewAdaptors.SocketAdaptorAdaptor(lsofCache, socketTable) })
 
-	pages := tview.NewPages()
-	pages.AddPage("Files",
-		filesTable,
-		true,
-		true)
-
-	pages.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Rune() == 'f' {
-			pages.SwitchToPage("Files")
-		} else if event.Rune() == 's' {
-			pages.SwitchToPage("Sockets")
-		}
-		return event
-	})
-	return pages
+	return filesTable, socketTable
 }
 
 func main() {
@@ -57,21 +49,41 @@ func main() {
 
 	app := tview.NewApplication()
 
-	sysCalls, cmd := buildSysCallsView(app, pid)
-	fdsTable := buildFDPages(app, pid, updater)
+	sysCalls, _ := buildSysCallsView(app, pid)
+	files, sockets := buildFDPages(app, pid, updater)
+
+	pages := tview.NewPages()
+	pages.AddPage(FILES_PAGE,
+		files,
+		true,
+		true)
+
+	pages.AddPage(SOCKETS_PAGE,
+		sockets,
+		true,
+		true)
+
+	pages.AddPage(SYSCALL_PAGE,
+		sysCalls,
+		true,
+		true)
+
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'f' {
+			pages.SwitchToPage(FILES_PAGE)
+		} else if event.Rune() == 's' {
+			pages.SwitchToPage(SOCKETS_PAGE)
+		} else if event.Rune() == 'y' {
+			pages.SwitchToPage(SYSCALL_PAGE)
+		} else if event.Rune() == 'q' {
+			app.Stop()
+		}
+		return event
+	})
 
 	updater.Run(app)
-	flex := tview.NewFlex().
-		AddItem(fdsTable, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(sysCalls, 0, 1, false), 0, 2, false)
 
-	if err := app.SetRoot(flex, true).SetFocus(fdsTable).Run(); err != nil {
+	if err := app.SetRoot(pages, true).SetFocus(pages).Run(); err != nil {
 		panic(err)
 	}
-
-	if err := cmd.Cancel(); err != nil {
-		panic(err)
-	}
-
 }
